@@ -377,9 +377,13 @@ enum RCTVideoUtils {
             if let headers = source.requestHeaders, !headers.isEmpty {
                 assetOptions.setObject(headers, forKey: "AVURLAssetHTTPHeaderFieldsKey" as NSCopying)
             }
-            let cookies: [AnyObject]! = HTTPCookieStorage.shared.cookies
-            assetOptions.setObject(cookies as Any, forKey: AVURLAssetHTTPCookiesKey as NSCopying)
-            asset = AVURLAsset(url: url, options: assetOptions as? [String: Any])
+            let cookies = HTTPCookieStorage.shared.cookies
+            if let cookies = cookies {
+                assetOptions.setObject(cookies, forKey: AVURLAssetHTTPCookiesKey as NSCopying)
+            }
+            if let url = url {
+                asset = AVURLAsset(url: url, options: assetOptions as? [String: Any])
+            }
         } else {
             asset = AVURLAsset(url: url)
         }
