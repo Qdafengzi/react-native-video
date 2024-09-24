@@ -362,9 +362,12 @@ enum RCTVideoUtils {
     }
 
     static func prepareAsset(source: VideoSource) -> (asset: AVURLAsset?, assetOptions: NSMutableDictionary?)? {
-        guard let sourceUri = source.uri, sourceUri != "" else { return nil }
+        guard var sourceUri = source.uri, sourceUri != "" else { return nil }
         var asset: AVURLAsset?
-        let bundlePath = Bundle.main.path(forResource: source.uri, ofType: source.type) ?? ""
+        let prefix = "file://"
+        if sourceUri.lowercased().hasPrefix(prefix) {
+            sourceUri = String(sourceUri.dropFirst(prefix.count))
+        }
         let url = source.isNetwork
             ? URL(string: source.uri ?? "")
             : URL(fileURLWithPath: sourceUri)
