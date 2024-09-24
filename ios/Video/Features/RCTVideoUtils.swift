@@ -365,9 +365,9 @@ enum RCTVideoUtils {
         guard let sourceUri = source.uri, sourceUri != "" else { return nil }
         var asset: AVURLAsset?
         let bundlePath = Bundle.main.path(forResource: source.uri, ofType: source.type) ?? ""
-        let url = source.isNetwork || source.isAsset
+        let url = source.isNetwork
             ? URL(string: source.uri ?? "")
-            : URL(fileURLWithPath: bundlePath)
+            : URL(fileURLWithPath: sourceUri)
         let assetOptions: NSMutableDictionary! = NSMutableDictionary()
 
         if source.isNetwork {
