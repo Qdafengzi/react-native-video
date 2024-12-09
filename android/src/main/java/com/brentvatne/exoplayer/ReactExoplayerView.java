@@ -371,7 +371,7 @@ public class ReactExoplayerView extends FrameLayout implements
                         }
 
                         // 执行 seek
-                        Log.d("播放器", "ACTION_MOVE lastPostion:" + lastPosition + " diffX：" + diffX + "  seekTime：" + seekTime + " newPosition:" + newPosition);
+                        //Log.d("播放器", "ACTION_MOVE lastPostion:" + lastPosition + " diffX：" + diffX + "  seekTime：" + seekTime + " newPosition:" + newPosition);
                         if (player != null) {
                             lastPosition = newPosition;
                             player.seekTo(newPosition);
