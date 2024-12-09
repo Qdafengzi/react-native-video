@@ -25,6 +25,8 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.Message;
 import android.text.TextUtils;
+import android.util.Log;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.CaptioningManager;
@@ -59,6 +61,7 @@ import androidx.media3.datasource.HttpDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.SeekParameters;
 import androidx.media3.exoplayer.dash.DashMediaSource;
 import androidx.media3.exoplayer.dash.DashUtil;
 import androidx.media3.exoplayer.dash.DefaultDashChunkSource;
@@ -103,6 +106,8 @@ import androidx.media3.extractor.metadata.emsg.EventMessage;
 import androidx.media3.extractor.metadata.id3.Id3Frame;
 import androidx.media3.extractor.metadata.id3.TextInformationFrame;
 import androidx.media3.session.MediaSessionService;
+import androidx.media3.ui.LegacyPlayerControlView;
+import androidx.media3.ui.TimeBar;
 
 import com.brentvatne.common.api.AdsProps;
 import com.brentvatne.common.api.BufferConfig;
@@ -269,6 +274,8 @@ public class ReactExoplayerView extends FrameLayout implements
 
     private CmcdConfiguration.Factory cmcdConfigurationFactory;
 
+    private float mLastPositionX;
+
     public void setCmcdConfigurationFactory(CmcdConfiguration.Factory factory) {
         this.cmcdConfigurationFactory = factory;
     }
@@ -315,6 +322,7 @@ public class ReactExoplayerView extends FrameLayout implements
         return window.windowStartTimeMs + currentPosition;
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     public ReactExoplayerView(ThemedReactContext context, ReactExoplayerConfig config) {
         super(context);
         this.themedReactContext = context;
@@ -333,6 +341,60 @@ public class ReactExoplayerView extends FrameLayout implements
         audioBecomingNoisyReceiver = new AudioBecomingNoisyReceiver(themedReactContext);
         audioFocusChangeListener = new OnAudioFocusChangedListener(this, themedReactContext);
         pictureInPictureReceiver = new PictureInPictureReceiver(this, themedReactContext);
+
+        setTouchSeek();
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    public void setTouchSeek(){
+        exoPlayerView.setOnTouchListener(new OnTouchListener() {
+            long lastPosition = 0;
+            int newPosition = 0;
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                //Log.d("播放器", "onTouch:"+controls);
+                if (!controls || event.getPointerCount() > 1) {
+                    return false;
+                }
+
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        mLastPositionX = event.getX();
+                        lastPosition = lastPos;
+                        player.pause();
+                        break;
+                    case MotionEvent.ACTION_MOVE:
+                        float currentX = event.getX();
+                        float diffX = currentX - mLastPositionX;
+                        int seekTime = 30 * (int) diffX;
+                        if (diffX < 0) {
+                            newPosition = (int) Math.min(lastPosition + seekTime, lastDuration);
+                            if (newPosition <= 0) {
+                                newPosition = (int) lastDuration;
+                            }
+                        } else {
+                            newPosition = (int) Math.max(lastPosition + seekTime, 0);
+                            if (newPosition >= lastDuration) {
+                                newPosition = 0;
+                            }
+                        }
+
+                        // 执行 seek
+                        Log.d("播放器", "ACTION_MOVE lastPostion:" + lastPosition + " diffX：" + diffX + "  seekTime：" + seekTime + " newPosition:" + newPosition);
+                        if (player != null) {
+                            lastPosition = newPosition;
+                            player.seekTo(newPosition);
+                        }
+                        mLastPositionX = currentX;
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        player.setPlayWhenReady(!isPaused); // 恢复播放
+                        break;
+                }
+                return true;
+            }
+        });
     }
 
     private boolean isPlayingAd() {
@@ -423,7 +485,11 @@ public class ReactExoplayerView extends FrameLayout implements
         if (exoPlayerView.isControllerVisible()) {
             exoPlayerView.hideController();
         } else {
-            exoPlayerView.showController();
+            //强制隐藏
+            //playerControlView.show();
+            playerControlView.hide();
+            // exoPlayerView.showController();
+            exoPlayerView.hideController();
         }
     }
 
@@ -433,13 +499,108 @@ public class ReactExoplayerView extends FrameLayout implements
         exoPlayerView.setControllerVisibilityListener(visibility -> {
             boolean isVisible = visibility == View.VISIBLE;
             eventEmitter.onControlsVisibilityChange.invoke(isVisible);
+        if (playerControlView == null) {
+            playerControlView = new LegacyPlayerControlView(getContext());
+            playerControlView.hide();
+            playerControlView.addVisibilityListener(new LegacyPlayerControlView.VisibilityListener() {
+                @Override
+                public void onVisibilityChange(int visibility) {
+                    eventEmitter.onControlsVisibilityChange.invoke(visibility == View.VISIBLE);
+                }
+            });
+        }
+
+        // Setting the player for the playerControlView
+
+        playerControlView.setPlayer(player);
+        playPauseControlContainer = playerControlView.findViewById(R.id.exo_play_pause_container);
+
+        // Invoking onClick event for exoplayerView
+        exoPlayerView.setOnClickListener((View v) -> {
+            if (!isPlayingAd()) {
+                togglePlayerControlVisibility();
+            }
         });
 
         exoPlayerView.setFullscreenButtonClickListener(isFullscreen -> {
             setFullscreen(!this.isFullscreen);
         });
-
         updateControllerConfig();
+        if (player != null) {
+            player.setSeekParameters(SeekParameters.CLOSEST_SYNC);
+        }
+        //Handling the rewind and forward button click events
+        ImageButton exoRewind = playerControlView.findViewById(R.id.exo_rew);
+        ImageButton exoForward = playerControlView.findViewById(R.id.exo_ffwd);
+        exoRewind.setOnClickListener((View v) -> {
+            seekTo(player.getCurrentPosition() - controlsConfig.getSeekIncrementMS());
+        });
+
+        exoForward.setOnClickListener((View v) -> {
+            seekTo(player.getCurrentPosition() + controlsConfig.getSeekIncrementMS());
+        });
+
+        //Handling the pauseButton click event
+        ImageButton pauseButton = playerControlView.findViewById(R.id.exo_pause);
+        pauseButton.setOnClickListener((View v) ->
+                setPausedModifier(true)
+        );
+
+        //Handling the settingButton click event
+        final ImageButton settingButton = playerControlView.findViewById(R.id.exo_settings);
+        settingButton.setOnClickListener(v -> openSettings());
+
+        //Handling the fullScreenButton click event
+        final ImageButton fullScreenButton = playerControlView.findViewById(R.id.exo_fullscreen);
+        fullScreenButton.setOnClickListener(v -> setFullscreen(!isFullscreen));
+        updateFullScreenButtonVisibility();
+        refreshControlsStyles();
+
+        // Invoking onPlaybackStateChanged and onPlayWhenReadyChanged events for Player
+        eventListener = new Player.Listener() {
+            @Override
+            public void onPlaybackStateChanged(int playbackState) {
+                View playButton = playerControlView.findViewById(R.id.exo_play);
+                View pauseButton = playerControlView.findViewById(R.id.exo_pause);
+                if (playButton != null && playButton.getVisibility() == GONE) {
+                    playButton.setVisibility(INVISIBLE);
+                }
+                if (pauseButton != null && pauseButton.getVisibility() == GONE) {
+                    pauseButton.setVisibility(INVISIBLE);
+                }
+
+                reLayout(playPauseControlContainer);
+                //Remove this eventListener once its executed. since UI will work fine once after the reLayout is done
+                player.removeListener(eventListener);
+            }
+
+            @Override
+            public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
+                reLayout(playPauseControlContainer);
+                //Remove this eventListener once its executed. since UI will work fine once after the reLayout is done
+                player.removeListener(eventListener);
+            }
+        };
+        player.addListener(eventListener);
+
+        DefaultTimeBar defaultTimeBar = playerControlView.findViewById(R.id.exo_progress);
+        defaultTimeBar.addListener(new TimeBar.OnScrubListener() {
+            @Override
+            public void onScrubStart(TimeBar timeBar, long position) {
+                Log.d("播放器","onScrubStart--->"+position);
+            }
+
+            @Override
+            public void onScrubMove(TimeBar timeBar, long position) {
+                Log.d("播放器","onScrubMove--->"+position);
+                player.seekTo(position);
+            }
+
+            @Override
+            public void onScrubStop(TimeBar timeBar, long position, boolean canceled) {
+                Log.d("播放器","onScrubStop--->"+position);
+            }
+        });
     }
 
     private void updateControllerConfig() {
@@ -1422,7 +1583,12 @@ public class ReactExoplayerView extends FrameLayout implements
                     }
                     // Setting the visibility for the player controls
                     if (exoPlayerView != null) {
-                        exoPlayerView.showController();
+                        exoPlayerView.hideController();
+                    }
+                    // Setting the visibility for the playerControlView
+                    if (playerControlView != null) {
+                        //playerControlView.show();
+                        playerControlView.hide();
                     }
                     setKeepScreenOn(preventsDisplaySleepDuringVideoPlayback);
                     break;
