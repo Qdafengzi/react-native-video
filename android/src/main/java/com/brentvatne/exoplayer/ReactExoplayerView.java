@@ -358,15 +358,15 @@ public class ReactExoplayerView extends FrameLayout implements
                         float currentX = event.getX();
                         float diffX = currentX - mLastPositionX;
                         int seekTime = 30 * (int) diffX;
-                        if (diffX > 0) {
-                            newPosition = (int) Math.min(lastPosition + seekTime, lastDuration);
-                            if (newPosition <= 0) {
-                                newPosition = (int) lastDuration;
-                            }
-                        } else {
-                            newPosition = (int) Math.max(lastPosition + seekTime, 0);
+                        if (diffX < 0) {
+                            newPosition = (int) Math.min(lastPosition - seekTime, lastDuration);
                             if (newPosition >= lastDuration) {
                                 newPosition = 0;
+                            }
+                        } else {
+                            newPosition = (int) Math.max(lastPosition - seekTime, 0);
+                            if (newPosition <= 0) {
+                                newPosition = (int) lastDuration;
                             }
                         }
 
