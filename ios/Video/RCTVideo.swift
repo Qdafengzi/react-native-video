@@ -1199,6 +1199,9 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         #if !os(tvOS)
             viewController.updatesNowPlayingInfoCenter = false
         #endif
+        if #available(iOS 16.0, *) {
+            viewController.allowsVideoFrameAnalysis = false
+        }
         viewController.rctDelegate = self
         viewController.preferredOrientation = _fullscreenOrientation
 
