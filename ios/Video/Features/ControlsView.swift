@@ -5,6 +5,7 @@ protocol ControlsViewDelegate: AnyObject {
     func seekToTime(_ percentage: CGFloat, withRate rate: CGFloat)
     func pausePlayback()
     func resumePlayback()
+    func beginGesture()
 }
 
 class ControlsView: UIView {
@@ -32,37 +33,36 @@ class ControlsView: UIView {
 
     @objc func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
         switch gesture.state {
-        case .began:
-            delegate?.pausePlayback()
-            initialTouchPoint = gesture.location(in: self)
-            currentPlayTime = Double(CMTimeGetSeconds(_player!.currentTime()))
-        case .changed:
-            let currentTouchPoint = gesture.location(in: self)
-            let screenWidth = UIScreen.main.bounds.width
-            let distance = initialTouchPoint.x - currentTouchPoint.x
-            
-            if let totalDuration = totalDuration, let currentPlayTime = currentPlayTime {
-                let percentage = distance / screenWidth * 2.0
+            case .began:
+                delegate?.beginGesture()
+                delegate?.pausePlayback()
+                initialTouchPoint = gesture.location(in: self)
+                currentPlayTime = Double(CMTimeGetSeconds(_player!.currentTime()))
                 
-                var seekTime = currentPlayTime + Double(percentage) * totalDuration
-                if seekTime < 0 {
-                    seekTime =  totalDuration + seekTime
-                    delegate?.pausePlayback()
-                } else if seekTime > totalDuration {
-                    seekTime = seekTime - totalDuration
-                    delegate?.pausePlayback()
+            case .changed:
+                let currentTouchPoint = gesture.location(in: self)
+                let screenWidth = UIScreen.main.bounds.width
+                let distance = initialTouchPoint.x - currentTouchPoint.x
+                
+                if let totalDuration = totalDuration, let currentPlayTime = currentPlayTime {
+                    let percentage = distance / screenWidth * 2.0
+                    
+                    var seekTime = currentPlayTime + Double(percentage) * totalDuration
+                    if seekTime < 0 {
+                        seekTime =  totalDuration + seekTime
+                        delegate?.pausePlayback()
+                    } else if seekTime > totalDuration {
+                        seekTime = seekTime - totalDuration
+                        delegate?.pausePlayback()
+                    }
+                    
+                    delegate?.seekToTime(CGFloat(seekTime), withRate: 1.0)
                 }
-
+            case .ended, .cancelled:
+                delegate?.resumePlayback()
                 
-                delegate?.seekToTime(CGFloat(seekTime), withRate: 1.0)
-            }
-        case .ended, .cancelled:
-            
-            delegate?.resumePlayback()
-            
-        default:
-            break
+            default:
+                break
         }
-        
     }
 }

@@ -106,6 +106,8 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     #endif
 
     private var _pip: RCTPictureInPicture?
+    
+    private var _originalPauseState = false // 手势操作之前的原始pause状态
 
     // Events
     @objc var onVideoLoadStart: RCTDirectEventBlock?
@@ -1222,7 +1224,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         }
 
         if #available(iOS 9.0, tvOS 14.0, *) {
-            viewController.allowsPictureInPicturePlayback = _pictureInPictureEnabled
+            viewController.allowsPictureInPicturePlayback = _enterPictureInPictureOnLeave
         }
         return viewController
     }
@@ -1874,6 +1876,11 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
 
 
 extension RCTVideo: ControlsViewDelegate {
+    
+    func beginGesture() {
+        _originalPauseState = _paused
+    }
+    
     func pausePlayback() {
         if let palyer = _player {
             palyer.pause()
@@ -1881,7 +1888,7 @@ extension RCTVideo: ControlsViewDelegate {
     }
     
     func resumePlayback() {
-        if let palyer = _player, !_paused {
+        if let palyer = _player, !_originalPauseState {
             palyer.play()
         }
     }
