@@ -366,10 +366,6 @@ enum RCTVideoUtils {
     static func prepareAsset(source: VideoSource) -> (asset: AVURLAsset?, assetOptions: NSMutableDictionary?)? {
         guard var sourceUri = source.uri, sourceUri != "" else { return nil }
         var asset: AVURLAsset!
-        let prefix = "file://"
-        if sourceUri.lowercased().hasPrefix(prefix) {
-            sourceUri = String(sourceUri.dropFirst(prefix.count))
-        }
         let bundlePath = Bundle.main.path(forResource: sourceUri, ofType: source.type) ?? ""
         guard let url = source.isNetwork || source.isAsset
             ? URL(string: sourceUri)
@@ -385,9 +381,7 @@ enum RCTVideoUtils {
             if let cookies = cookies {
                 assetOptions.setObject(cookies, forKey: AVURLAssetHTTPCookiesKey as NSCopying)
             }
-            if let url = url {
-                asset = AVURLAsset(url: url, options: assetOptions as? [String: Any])
-            }
+            asset = AVURLAsset(url: url, options: assetOptions as? [String: Any])
         } else {
             asset = AVURLAsset(url: url)
         }
