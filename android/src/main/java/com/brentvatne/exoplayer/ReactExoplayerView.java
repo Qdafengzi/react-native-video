@@ -10,9 +10,9 @@ import static androidx.media3.common.C.TIME_END_OF_SOURCE;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.ActivityManager;
+import android.app.AlertDialog;
 import android.app.PictureInPictureParams;
 import android.app.RemoteAction;
-import android.app.AlertDialog;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -31,9 +31,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.CaptioningManager;
 import android.widget.FrameLayout;
-import android.widget.ImageButton;
-import android.widget.LinearLayout;
-import android.widget.TextView;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
@@ -61,7 +58,6 @@ import androidx.media3.datasource.HttpDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.exoplayer.SeekParameters;
 import androidx.media3.exoplayer.dash.DashMediaSource;
 import androidx.media3.exoplayer.dash.DashUtil;
 import androidx.media3.exoplayer.dash.DefaultDashChunkSource;
@@ -69,13 +65,10 @@ import androidx.media3.exoplayer.dash.manifest.AdaptationSet;
 import androidx.media3.exoplayer.dash.manifest.DashManifest;
 import androidx.media3.exoplayer.dash.manifest.Period;
 import androidx.media3.exoplayer.dash.manifest.Representation;
-import androidx.media3.exoplayer.drm.DefaultDrmSessionManager;
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManagerProvider;
 import androidx.media3.exoplayer.drm.DrmSessionEventListener;
 import androidx.media3.exoplayer.drm.DrmSessionManager;
 import androidx.media3.exoplayer.drm.DrmSessionManagerProvider;
-import androidx.media3.exoplayer.drm.FrameworkMediaDrm;
-import androidx.media3.exoplayer.drm.HttpMediaDrmCallback;
 import androidx.media3.exoplayer.drm.UnsupportedDrmException;
 import androidx.media3.exoplayer.hls.HlsMediaSource;
 import androidx.media3.exoplayer.ima.ImaAdsLoader;
@@ -87,7 +80,6 @@ import androidx.media3.exoplayer.smoothstreaming.SsMediaSource;
 import androidx.media3.exoplayer.source.ClippingMediaSource;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
-import androidx.media3.exoplayer.source.MergingMediaSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 import androidx.media3.exoplayer.source.TrackGroupArray;
 import androidx.media3.exoplayer.source.ads.AdsMediaSource;
@@ -106,9 +98,6 @@ import androidx.media3.extractor.metadata.emsg.EventMessage;
 import androidx.media3.extractor.metadata.id3.Id3Frame;
 import androidx.media3.extractor.metadata.id3.TextInformationFrame;
 import androidx.media3.session.MediaSessionService;
-import androidx.media3.ui.DefaultTimeBar;
-import androidx.media3.ui.LegacyPlayerControlView;
-import androidx.media3.ui.TimeBar;
 
 import com.brentvatne.common.api.AdsProps;
 import com.brentvatne.common.api.BufferConfig;
@@ -323,7 +312,6 @@ public class ReactExoplayerView extends FrameLayout implements
         return window.windowStartTimeMs + currentPosition;
     }
 
-    @SuppressLint("ClickableViewAccessibility")
     public ReactExoplayerView(ThemedReactContext context, ReactExoplayerConfig config) {
         super(context);
         this.themedReactContext = context;
@@ -343,6 +331,7 @@ public class ReactExoplayerView extends FrameLayout implements
         audioFocusChangeListener = new OnAudioFocusChangedListener(this, themedReactContext);
         pictureInPictureReceiver = new PictureInPictureReceiver(this, themedReactContext);
 
+        // 触摸seek
         setTouchSeek();
     }
 
@@ -363,8 +352,10 @@ public class ReactExoplayerView extends FrameLayout implements
                         mLastPositionX = event.getX();
                         lastPosition = lastPos;
                         player.pause();
+                        //Log.d("播放器", "ACTION_DOWN:");
                         break;
                     case MotionEvent.ACTION_MOVE:
+                        //Log.d("播放器", "ACTION_MOVE:");
                         float currentX = event.getX();
                         float diffX = currentX - mLastPositionX;
                         int seekTime = 30 * (int) diffX;
@@ -483,142 +474,46 @@ public class ReactExoplayerView extends FrameLayout implements
      */
     private void togglePlayerControlVisibility() {
         if (player == null) return;
-        if (exoPlayerView.isControllerVisible()) {
-            exoPlayerView.hideController();
-        } else {
-            //强制隐藏
-            //playerControlView.show();
-            playerControlView.hide();
-            // exoPlayerView.showController();
-            exoPlayerView.hideController();
-        }
+//        if (exoPlayerView.isControllerVisible()) {
+//            exoPlayerView.hideController();
+//        } else {
+//            exoPlayerView.showController();
+//        }
+        exoPlayerView.hideController();
     }
 
     private void initializePlayerControl() {
         exoPlayerView.setPlayer(player);
-        
+
         exoPlayerView.setControllerVisibilityListener(visibility -> {
             boolean isVisible = visibility == View.VISIBLE;
             eventEmitter.onControlsVisibilityChange.invoke(isVisible);
-        if (playerControlView == null) {
-            playerControlView = new LegacyPlayerControlView(getContext());
-            playerControlView.hide();
-            playerControlView.addVisibilityListener(new LegacyPlayerControlView.VisibilityListener() {
-                @Override
-                public void onVisibilityChange(int visibility) {
-                    eventEmitter.onControlsVisibilityChange.invoke(visibility == View.VISIBLE);
-                }
-            });
-        }
-
-        // Setting the player for the playerControlView
-
-        playerControlView.setPlayer(player);
-        playPauseControlContainer = playerControlView.findViewById(R.id.exo_play_pause_container);
-
-        // Invoking onClick event for exoplayerView
-        exoPlayerView.setOnClickListener((View v) -> {
-            if (!isPlayingAd()) {
-                togglePlayerControlVisibility();
-            }
         });
 
         exoPlayerView.setFullscreenButtonClickListener(isFullscreen -> {
             setFullscreen(!this.isFullscreen);
         });
+
         updateControllerConfig();
-        if (player != null) {
-            player.setSeekParameters(SeekParameters.CLOSEST_SYNC);
-        }
-        //Handling the rewind and forward button click events
-        ImageButton exoRewind = playerControlView.findViewById(R.id.exo_rew);
-        ImageButton exoForward = playerControlView.findViewById(R.id.exo_ffwd);
-        exoRewind.setOnClickListener((View v) -> {
-            seekTo(player.getCurrentPosition() - controlsConfig.getSeekIncrementMS());
-        });
-
-        exoForward.setOnClickListener((View v) -> {
-            seekTo(player.getCurrentPosition() + controlsConfig.getSeekIncrementMS());
-        });
-
-        //Handling the pauseButton click event
-        ImageButton pauseButton = playerControlView.findViewById(R.id.exo_pause);
-        pauseButton.setOnClickListener((View v) ->
-                setPausedModifier(true)
-        );
-
-        //Handling the settingButton click event
-        final ImageButton settingButton = playerControlView.findViewById(R.id.exo_settings);
-        settingButton.setOnClickListener(v -> openSettings());
-
-        //Handling the fullScreenButton click event
-        final ImageButton fullScreenButton = playerControlView.findViewById(R.id.exo_fullscreen);
-        fullScreenButton.setOnClickListener(v -> setFullscreen(!isFullscreen));
-        updateFullScreenButtonVisibility();
-        refreshControlsStyles();
-
-        // Invoking onPlaybackStateChanged and onPlayWhenReadyChanged events for Player
-        eventListener = new Player.Listener() {
-            @Override
-            public void onPlaybackStateChanged(int playbackState) {
-                View playButton = playerControlView.findViewById(R.id.exo_play);
-                View pauseButton = playerControlView.findViewById(R.id.exo_pause);
-                if (playButton != null && playButton.getVisibility() == GONE) {
-                    playButton.setVisibility(INVISIBLE);
-                }
-                if (pauseButton != null && pauseButton.getVisibility() == GONE) {
-                    pauseButton.setVisibility(INVISIBLE);
-                }
-
-                reLayout(playPauseControlContainer);
-                //Remove this eventListener once its executed. since UI will work fine once after the reLayout is done
-                player.removeListener(eventListener);
-            }
-
-            @Override
-            public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
-                reLayout(playPauseControlContainer);
-                //Remove this eventListener once its executed. since UI will work fine once after the reLayout is done
-                player.removeListener(eventListener);
-            }
-        };
-        player.addListener(eventListener);
-
-        DefaultTimeBar defaultTimeBar = playerControlView.findViewById(R.id.exo_progress);
-        defaultTimeBar.addListener(new TimeBar.OnScrubListener() {
-            @Override
-            public void onScrubStart(TimeBar timeBar, long position) {
-                Log.d("播放器","onScrubStart--->"+position);
-            }
-
-            @Override
-            public void onScrubMove(TimeBar timeBar, long position) {
-                Log.d("播放器","onScrubMove--->"+position);
-                player.seekTo(position);
-            }
-
-            @Override
-            public void onScrubStop(TimeBar timeBar, long position, boolean canceled) {
-                Log.d("播放器","onScrubStop--->"+position);
-            }
-        });
     }
 
     private void updateControllerConfig() {
         if (exoPlayerView == null) return;
-        
+
         exoPlayerView.setControllerShowTimeoutMs(5000);
-        
-        exoPlayerView.setControllerAutoShow(true);
+
+        exoPlayerView.setControllerAutoShow(false);
+        //exoPlayerView.setControllerAutoShow(true);
         exoPlayerView.setControllerHideOnTouch(true);
-        
+
         updateControllerVisibility();
     }
 
     private void updateControllerVisibility() {
         if (exoPlayerView == null) return;
-            
-        exoPlayerView.setUseController(controls && !controlsConfig.getHideFullscreen());
+
+        exoPlayerView.setUseController(false);
+//        exoPlayerView.setUseController(controls && !controlsConfig.getHideFullscreen());
     }
 
     private void openSettings() {
@@ -682,7 +577,7 @@ public class ReactExoplayerView extends FrameLayout implements
     }
 
     // Note: The following methods for live content and button visibility are no longer needed
-    // as PlayerView handles controls automatically. Some functionality may need to be 
+    // as PlayerView handles controls automatically. Some functionality may need to be
     // reimplemented using PlayerView's APIs if custom behavior is required.
 
     private void reLayoutControls() {
@@ -1166,13 +1061,13 @@ public class ReactExoplayerView extends FrameLayout implements
         if (customMetadata != null) {
             mediaItemBuilder.setMediaMetadata(customMetadata);
         }
-        
+
         // Add external subtitles to MediaItem
         List<MediaItem.SubtitleConfiguration> subtitleConfigurations = buildSubtitleConfigurations();
         if (subtitleConfigurations != null) {
             mediaItemBuilder.setSubtitleConfigurations(subtitleConfigurations);
         }
-        
+
         if (source.getAdsProps() != null) {
             Uri adTagUrl = source.getAdsProps().getAdTagUrl();
             if (adTagUrl != null) {
@@ -1326,28 +1221,28 @@ public class ReactExoplayerView extends FrameLayout implements
                         label += " (" + track.getLanguage() + ")";
                     }
                 }
-                
+
                 MediaItem.SubtitleConfiguration.Builder configBuilder = new MediaItem.SubtitleConfiguration.Builder(track.getUri())
                         .setId(trackId)
                         .setMimeType(track.getType())
                         .setLabel(label)
                         .setRoleFlags(C.ROLE_FLAG_SUBTITLE);
-                
+
                 // Set language if available
                 if (track.getLanguage() != null && !track.getLanguage().isEmpty()) {
                     configBuilder.setLanguage(track.getLanguage());
                 }
-                
+
                 // Set selection flags - make first track default if no specific track is selected
                 if (trackIndex == 0 && (textTrackType == null || "disabled".equals(textTrackType))) {
                     configBuilder.setSelectionFlags(C.SELECTION_FLAG_DEFAULT);
                 } else {
                     configBuilder.setSelectionFlags(0);
                 }
-                
+
                 MediaItem.SubtitleConfiguration subtitleConfiguration = configBuilder.build();
                 subtitleConfigurations.add(subtitleConfiguration);
-                
+
                 DebugLog.d(TAG, "Created subtitle configuration: " + trackId + " - " + label + " (" + track.getType() + ")");
                 trackIndex++;
             } catch (Exception e) {
@@ -1586,11 +1481,7 @@ public class ReactExoplayerView extends FrameLayout implements
                     if (exoPlayerView != null) {
                         exoPlayerView.hideController();
                     }
-                    // Setting the visibility for the playerControlView
-                    if (playerControlView != null) {
-                        //playerControlView.show();
-                        playerControlView.hide();
-                    }
+
                     setKeepScreenOn(preventsDisplaySleepDuringVideoPlayback);
                     break;
                 case Player.STATE_ENDED:
@@ -1655,7 +1546,7 @@ public class ReactExoplayerView extends FrameLayout implements
                     }
                     eventEmitter.onVideoLoad.invoke(duration, currentPosition, width, height,
                             audioTracks, textTracks, videoTracks, trackId );
-                    
+
                     updateSubtitleButtonVisibility();
                 });
                 return;
@@ -1696,19 +1587,19 @@ public class ReactExoplayerView extends FrameLayout implements
         for (int groupIndex = 0; groupIndex < groups.length; ++groupIndex) {
             TrackGroup group = groups.get(groupIndex);
             Format format = group.getFormat(0);
-            
+
             // Check if this specific group is the currently selected one
             boolean isSelected = false;
             if (selection != null && selection.getTrackGroup() == group) {
                 isSelected = true;
             }
-            
+
             Track audioTrack = exoplayerTrackToGenericTrack(format, groupIndex, selection, group);
             audioTrack.setBitrate(format.bitrate == Format.NO_VALUE ? 0 : format.bitrate);
             audioTrack.setSelected(isSelected);
             audioTracks.add(audioTrack);
         }
-        
+
         return audioTracks;
     }
 
@@ -1751,6 +1642,7 @@ public class ReactExoplayerView extends FrameLayout implements
         return videoTracks;
     }
 
+    @SuppressLint("WrongThread")
     private ArrayList<VideoTrack> getVideoTrackInfoFromManifest() {
         return this.getVideoTrackInfoFromManifest(0);
     }
@@ -1834,13 +1726,13 @@ public class ReactExoplayerView extends FrameLayout implements
         if (trackSelector == null) {
             return textTracks;
         }
-        
+
         MappingTrackSelector.MappedTrackInfo info = trackSelector.getCurrentMappedTrackInfo();
         int index = getTrackRendererIndex(C.TRACK_TYPE_TEXT);
         if (info == null || index == C.INDEX_UNSET) {
             return textTracks;
         }
-        
+
         TrackSelectionArray selectionArray = player.getCurrentTrackSelections();
         TrackSelection selection = selectionArray.get(C.TRACK_TYPE_TEXT);
         TrackGroupArray groups = info.getTrackGroups(index);
@@ -1850,12 +1742,12 @@ public class ReactExoplayerView extends FrameLayout implements
             for (int trackIndex = 0; trackIndex < group.length; trackIndex++) {
                 Format format = group.getFormat(trackIndex);
                 Track textTrack = exoplayerTrackToGenericTrack(format, trackIndex, selection, group);
-                
+
                 boolean isExternal = format.id != null && format.id.startsWith("external-subtitle-");
                 boolean isSelected = isTrackSelected(selection, group, trackIndex);
-                
+
                 textTrack.setIndex(textTracks.size());
-                
+
                 if (textTrack.getTitle() == null || textTrack.getTitle().isEmpty()) {
                     if (isExternal) {
                         textTrack.setTitle("External " + (trackIndex + 1));
@@ -1863,7 +1755,7 @@ public class ReactExoplayerView extends FrameLayout implements
                         textTrack.setTitle("Track " + (textTracks.size() + 1));
                     }
                 }
-                
+
                 textTracks.add(textTrack);
             }
         }
@@ -1883,11 +1775,11 @@ public class ReactExoplayerView extends FrameLayout implements
         }
 
         TrackGroupArray groups = info.getTrackGroups(index);
-        
+
         for (int groupIndex = 0; groupIndex < groups.length; ++groupIndex) {
             TrackGroup group = groups.get(groupIndex);
             Format format = group.getFormat(0);
-            
+
             // Create track without trying to determine selection status
             Track track = new Track();
             track.setIndex(groupIndex);
@@ -1896,10 +1788,10 @@ public class ReactExoplayerView extends FrameLayout implements
             track.setSelected(false); // Don't report selection status - let PlayerView handle it
             if (format.sampleMimeType != null) track.setMimeType(format.sampleMimeType);
             track.setBitrate(format.bitrate == Format.NO_VALUE ? 0 : format.bitrate);
-            
+
             tracks.add(track);
         }
-        
+
         DebugLog.d(TAG, "getBasicAudioTrackInfo: returning " + tracks.size() + " audio tracks (no selection status)");
         return tracks;
     }
@@ -1909,27 +1801,27 @@ public class ReactExoplayerView extends FrameLayout implements
         if (trackSelector == null) {
             return textTracks;
         }
-        
+
         MappingTrackSelector.MappedTrackInfo info = trackSelector.getCurrentMappedTrackInfo();
         int index = getTrackRendererIndex(C.TRACK_TYPE_TEXT);
         if (info == null || index == C.INDEX_UNSET) {
             return textTracks;
         }
-        
+
         TrackGroupArray groups = info.getTrackGroups(index);
 
         for (int groupIndex = 0; groupIndex < groups.length; ++groupIndex) {
             TrackGroup group = groups.get(groupIndex);
             for (int trackIndex = 0; trackIndex < group.length; trackIndex++) {
                 Format format = group.getFormat(trackIndex);
-                
+
                 Track textTrack = new Track();
                 textTrack.setIndex(textTracks.size());
                 if (format.sampleMimeType != null) textTrack.setMimeType(format.sampleMimeType);
                 if (format.language != null) textTrack.setLanguage(format.language);
-                
+
                 boolean isExternal = format.id != null && format.id.startsWith("external-subtitle-");
-                
+
                 if (format.label != null && !format.label.isEmpty()) {
                     textTrack.setTitle(format.label);
                 } else if (isExternal) {
@@ -1937,7 +1829,7 @@ public class ReactExoplayerView extends FrameLayout implements
                 } else {
                     textTrack.setTitle("Track " + (textTracks.size() + 1));
                 }
-                
+
                 textTrack.setSelected(false); // Don't report selection status - let PlayerView handle it
                 textTracks.add(textTrack);
             }
@@ -1998,12 +1890,12 @@ public class ReactExoplayerView extends FrameLayout implements
     @Override
     public void onTracksChanged(@NonNull Tracks tracks) {
         DebugLog.d(TAG, "onTracksChanged called - updating track information, controls=" + controls);
-        
+
         if (controls) {
             ArrayList<Track> textTracks = getBasicTextTrackInfo();
-            ArrayList<Track> audioTracks = getBasicAudioTrackInfo(); 
+            ArrayList<Track> audioTracks = getBasicAudioTrackInfo();
             ArrayList<VideoTrack> videoTracks = getVideoTrackInfo();
-            
+
             eventEmitter.onTextTracks.invoke(textTracks);
             eventEmitter.onAudioTracks.invoke(audioTracks);
             eventEmitter.onVideoTracks.invoke(videoTracks);
@@ -2011,7 +1903,7 @@ public class ReactExoplayerView extends FrameLayout implements
             ArrayList<Track> textTracks = getTextTrackInfo();
             ArrayList<Track> audioTracks = getAudioTrackInfo();
             ArrayList<VideoTrack> videoTracks = getVideoTrackInfo();
-            
+
             eventEmitter.onTextTracks.invoke(textTracks);
             eventEmitter.onAudioTracks.invoke(audioTracks);
             eventEmitter.onVideoTracks.invoke(videoTracks);
@@ -2022,22 +1914,22 @@ public class ReactExoplayerView extends FrameLayout implements
                 }
             }
         }
-        
+
         updateSubtitleButtonVisibility();
     }
-    
-    
+
+
     private boolean hasBuiltInTextTracks() {
         if (player == null || trackSelector == null) return false;
-        
+
         MappingTrackSelector.MappedTrackInfo info = trackSelector.getCurrentMappedTrackInfo();
         if (info == null) return false;
-        
+
         int textRendererIndex = getTrackRendererIndex(C.TRACK_TYPE_TEXT);
         if (textRendererIndex == C.INDEX_UNSET) return false;
-        
+
         TrackGroupArray groups = info.getTrackGroups(textRendererIndex);
-        
+
         // Check if any groups have tracks that are NOT external subtitles
         for (int i = 0; i < groups.length; i++) {
             TrackGroup group = groups.get(i);
@@ -2049,17 +1941,17 @@ public class ReactExoplayerView extends FrameLayout implements
                 }
             }
         }
-        
+
         return false;
     }
 
     private void updateSubtitleButtonVisibility() {
         if (exoPlayerView == null) return;
-        
-        boolean hasTextTracks = (source.getSideLoadedTextTracks() != null && 
+
+        boolean hasTextTracks = (source.getSideLoadedTextTracks() != null &&
                                 !source.getSideLoadedTextTracks().getTracks().isEmpty()) ||
                                hasBuiltInTextTracks();
-        
+
         exoPlayerView.setShowSubtitleButton(hasTextTracks);
     }
 
@@ -2253,7 +2145,7 @@ public class ReactExoplayerView extends FrameLayout implements
 
     public void disableTrack(int rendererIndex) {
         if (trackSelector == null) return;
-        
+
         DefaultTrackSelector.Parameters disableParameters = trackSelector.getParameters()
                 .buildUpon()
                 .setRendererDisabled(rendererIndex, true)
@@ -2263,30 +2155,30 @@ public class ReactExoplayerView extends FrameLayout implements
 
     private void selectTextTrackInternal(String type, String value) {
         if (player == null || trackSelector == null) return;
-        
+
         DebugLog.d(TAG, "selectTextTrackInternal: type=" + type + ", value=" + value);
-        
+
         DefaultTrackSelector.Parameters.Builder parametersBuilder = trackSelector.getParameters().buildUpon();
-        
+
         if ("disabled".equals(type) || value == null) {
             parametersBuilder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true);
         } else {
             parametersBuilder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false);
-            
+
             parametersBuilder.clearOverridesOfType(C.TRACK_TYPE_TEXT);
-            
+
             MappingTrackSelector.MappedTrackInfo info = trackSelector.getCurrentMappedTrackInfo();
             if (info != null) {
                 int textRendererIndex = getTrackRendererIndex(C.TRACK_TYPE_TEXT);
                 if (textRendererIndex != C.INDEX_UNSET) {
                     TrackGroupArray groups = info.getTrackGroups(textRendererIndex);
                     boolean trackFound = false;
-                    
+
                     for (int groupIndex = 0; groupIndex < groups.length; groupIndex++) {
                         TrackGroup group = groups.get(groupIndex);
                         for (int trackIndex = 0; trackIndex < group.length; trackIndex++) {
                             Format format = group.getFormat(trackIndex);
-                            
+
                             boolean isMatch = false;
                             if ("language".equals(type) && format.language != null && format.language.equals(value)) {
                                 isMatch = true;
@@ -2298,9 +2190,9 @@ public class ReactExoplayerView extends FrameLayout implements
                                     isMatch = true;
                                 }
                             }
-                            
+
                             if (isMatch) {
-                                TrackSelectionOverride override = new TrackSelectionOverride(group, 
+                                TrackSelectionOverride override = new TrackSelectionOverride(group,
                                     java.util.Arrays.asList(trackIndex));
                                 parametersBuilder.addOverride(override);
                                 trackFound = true;
@@ -2309,18 +2201,18 @@ public class ReactExoplayerView extends FrameLayout implements
                         }
                         if (trackFound) break;
                     }
-                    
+
                     if (!trackFound) {
-                        DebugLog.w(TAG, "Text track not found for type=" + type + ", value=" + value + 
+                        DebugLog.w(TAG, "Text track not found for type=" + type + ", value=" + value +
                             ". Keeping current selection.");
                     }
                 }
             }
         }
-        
+
         try {
             trackSelector.setParameters(parametersBuilder.build());
-            
+
             // Give PlayerView time to update its controls
             mainHandler.postDelayed(() -> {
                 if (exoPlayerView != null) {
@@ -2334,16 +2226,16 @@ public class ReactExoplayerView extends FrameLayout implements
 
     public void setSelectedTrack(int trackType, String type, String value) {
         if (player == null || trackSelector == null) return;
-        
+
         if (controls) {
             return;
         }
-        
+
         int rendererIndex = getTrackRendererIndex(trackType);
         if (rendererIndex == C.INDEX_UNSET) {
             return;
         }
-        
+
         MappingTrackSelector.MappedTrackInfo info = trackSelector.getCurrentMappedTrackInfo();
         if (info == null) {
             return;
@@ -2498,7 +2390,7 @@ public class ReactExoplayerView extends FrameLayout implements
                     .setExceedVideoConstraintsIfNecessary(true)
                     .setRendererDisabled(rendererIndex, false);
 
-            // Clear existing overrides for this track type to avoid conflicts  
+            // Clear existing overrides for this track type to avoid conflicts
             // But be careful with audio tracks - don't clear unless explicitly selecting a different track
             if (trackType != C.TRACK_TYPE_AUDIO || !type.equals("default")) {
                 selectionParameters.clearOverridesOfType(selectionOverride.getType());
@@ -2514,7 +2406,7 @@ public class ReactExoplayerView extends FrameLayout implements
             if (trackType == C.TRACK_TYPE_AUDIO) {
                 selectionParameters.setForceHighestSupportedBitrate(false);
                 selectionParameters.setForceLowestBitrate(false);
-                DebugLog.d(TAG, "Audio track selection: group=" + groupIndex + ", tracks=" + tracks + 
+                DebugLog.d(TAG, "Audio track selection: group=" + groupIndex + ", tracks=" + tracks +
                     ", override=" + selectionOverride);
             }
 
@@ -2573,7 +2465,7 @@ public class ReactExoplayerView extends FrameLayout implements
     public void setSelectedAudioTrack(String type, String value) {
         audioTrackType = type;
         audioTrackValue = value;
-        
+
         if (!controls && player != null && trackSelector != null) {
             setSelectedTrack(C.TRACK_TYPE_AUDIO, audioTrackType, audioTrackValue);
         }
@@ -2582,7 +2474,7 @@ public class ReactExoplayerView extends FrameLayout implements
     public void setSelectedTextTrack(String type, String value) {
         textTrackType = type;
         textTrackValue = value;
-        
+
         selectTextTrackInternal(type, value);
     }
 
@@ -2859,10 +2751,12 @@ public class ReactExoplayerView extends FrameLayout implements
     public void setControls(boolean controls) {
         this.controls = controls;
         if (exoPlayerView != null) {
-            exoPlayerView.setUseController(controls);
+            //exoPlayerView.setUseController(controls);
+            exoPlayerView.setUseController(false);
             // Additional configuration for proper touch handling
             if (controls) {
-                exoPlayerView.setControllerAutoShow(true);
+//                exoPlayerView.setControllerAutoShow(true);
+                exoPlayerView.setControllerAutoShow(false);
                 exoPlayerView.setControllerHideOnTouch(true);  // Show controls on touch, don't hide
                 exoPlayerView.setControllerShowTimeoutMs(5000);
             }
